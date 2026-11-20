@@ -151,48 +151,23 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
     }
 
     StudentSetup? setup;
-    var openingStage = 'تهيئة نافذة بيانات الطلاب';
     try {
-      // احصل على Navigator أثناء صلاحية سياق الصفحة، ثم استخدم مساراً خاماً
-      // لتجنب التقاط InheritedTheme داخل DialogRoute الذي كان يرمي خطأ null.
-      final navigator = Navigator.of(context, rootNavigator: true);
+      // استخدم واجهة Flutter القياسية للحوار؛ فهي تنشئ DialogRoute وتلتقط
+      // السمات الموروثة وسياق Material تلقائياً بدلاً من بناء RawDialogRoute يدوياً.
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted) return;
-
-      openingStage = 'إنشاء مسار نافذة بيانات الطلاب';
-      final route = RawDialogRoute<StudentSetup>(
+      setup = await showDialog<StudentSetup>(
+        context: context,
+        useRootNavigator: true,
         barrierDismissible: false,
-        barrierColor: Colors.black54,
-        transitionDuration: const Duration(milliseconds: 180),
-        pageBuilder: (routeContext, animation, secondaryAnimation) {
-          // RawDialogRoute لا يلتقط InheritedTheme تلقائياً مثل DialogRoute.
-          // أعد تمرير سمات الصفحة إلى النافذة حتى لا تُبنى خارج Theme الأصلي.
-          final dialog = _StudentSetupDialog(isPdf: _isPdf);
-          return SafeArea(
-            child: InheritedTheme.captureAll(context, dialog),
-          );
-        },
-        transitionBuilder: (context, animation, secondaryAnimation, child) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOut,
-            reverseCurve: Curves.easeIn,
-          );
-          return FadeTransition(
-            opacity: curved,
-            child: ScaleTransition(
-              scale: Tween<double>(begin: 0.98, end: 1).animate(curved),
-              child: child,
-            ),
-          );
-        },
+        useSafeArea: true,
+        builder: (dialogContext) => _StudentSetupDialog(isPdf: _isPdf),
       );
-
-      openingStage = 'عرض نافذة بيانات الطلاب';
-      setup = await navigator.push<StudentSetup>(route);
     } catch (e, stackTrace) {
-      debugPrint('فتح نافذة بيانات الطلاب فشل في المرحلة [$openingStage]: $e\\n$stackTrace');
-      _showMessage('تعذر فتح نافذة الطلاب ($openingStage): $e', isError: true);
+      debugPrint('فتح نافذة بيانات الطلاب فشل: $e\n$stackTrace');
+      if (mounted) {
+        _showMessage('تعذر فتح نافذة بيانات الطلاب: $e', isError: true);
+      }
       return;
     }
 
