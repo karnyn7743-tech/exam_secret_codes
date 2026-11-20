@@ -8,6 +8,13 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.os.Handler
+import android.provider.Settings
+import android.util.Base64
+import java.security.KeyFactory
+import java.security.MessageDigest
+import java.security.Signature
+import java.security.spec.X509EncodedKeySpec
+import org.json.JSONObject
 import android.os.Looper
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
@@ -27,9 +34,37 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val channelName = "com.example.exam_secret_codes/document_pdf"
+    private val licenseChannelName = "com.example.exam_secret_codes/license"
+    private val licensePublicKey = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvlaA/c3IBKEro+rvm6hjYFCbUmB3xNwpN6FlqUw1RtuFB37u0blR37TmMxB/yX0plEEGjWDeH3+nvG2/KnVaBYXN/6qwc+bSHcT5nzmRK0zMfFutX302Ad4f9l8BoTrv83p7kxIBoF0LoVi090FRrWRtHRK8fFysfOcnp9hsKJJ1HH8gHf9YtuMmIkBml3RL1en9zgesQtkQKaDgHE1h1jJSLCiFl6/t/xf+z4bqS/WVl2fVYcOENl+9LV6mFmNunPmXVj9SlTQ/rKU0SEUoy41kj5ZFfG8uCMs/7eBLPLCMlIP2F0pp88u4IMkNyYXViry4TpytkQawAvddF3oXiwIDAQAB"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, licenseChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getDeviceId" -> {
+                        try {
+                            result.success(getStableDeviceId())
+                        } catch (e: Exception) {
+                            result.error("DEVICE_ID_FAILED", e.message, null)
+                        }
+                    }
+                    "verifyLicense" -> {
+                        val token = call.argument<String>("token")
+                        if (token.isNullOrBlank()) {
+                            result.success(mapOf("valid" to false))
+                        } else {
+                            try {
+                                result.success(verifyLicenseToken(token))
+                            } catch (_: Exception) {
+                                result.success(mapOf("valid" to false))
+                            }
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
@@ -73,6 +108,57 @@ class MainActivity : FlutterActivity() {
                     }
                 }.start()
             }
+    }
+
+
+    private fun getStableDeviceId(): String {
+        val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+            ?: throw IllegalStateException("Android ID is unavailable")
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(androidId.toByteArray(Charsets.UTF_8))
+        val hex = digest.joinToString("") { "%02X".format(it) }.take(12)
+        return "${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}"
+    }
+
+    private fun verifyLicenseToken(token: String): Map<String, Any?> {
+        val parts = token.trim().split(".")
+        if (parts.size != 2) return mapOf("valid" to false)
+
+        val decoderFlags = Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+        val payloadBytes = Base64.decode(parts[0], decoderFlags)
+        val signatureBytes = Base64.decode(parts[1], decoderFlags)
+
+        val publicBytes = Base64.decode(licensePublicKey, Base64.DEFAULT)
+        val publicKey = KeyFactory.getInstance("RSA")
+            .generatePublic(X509EncodedKeySpec(publicBytes))
+        val verifier = Signature.getInstance("SHA256withRSA")
+        verifier.initVerify(publicKey)
+        verifier.update(payloadBytes)
+        if (!verifier.verify(signatureBytes)) return mapOf("valid" to false)
+
+        val payload = JSONObject(String(payloadBytes, Charsets.UTF_8))
+        if (payload.optInt("v") != 1 ||
+            payload.optString("app") != "exam_secret_codes" ||
+            payload.optString("device") != getStableDeviceId()
+        ) return mapOf("valid" to false)
+
+        val type = payload.optString("type")
+        val issuedAt = payload.optLong("issuedAt", 0L)
+        val expiresAt = payload.optLong("expiresAt", 0L)
+        val now = System.currentTimeMillis() / 1000L
+        if (issuedAt <= 0L || issuedAt > now + 300L) return mapOf("valid" to false)
+
+        return when (type) {
+            "full" -> mapOf("valid" to true, "type" to "full", "expiresAt" to 0L)
+            "trial" -> {
+                val expectedDuration = 30L * 24L * 60L * 60L
+                val duration = expiresAt - issuedAt
+                val valid = duration in (expectedDuration - 300L)..(expectedDuration + 300L) &&
+                    now < expiresAt
+                mapOf("valid" to valid, "type" to "trial", "expiresAt" to expiresAt)
+            }
+            else -> mapOf("valid" to false)
+        }
     }
 
     private fun createStudentPdf(
