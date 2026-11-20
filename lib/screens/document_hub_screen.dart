@@ -151,24 +151,45 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
     }
 
     StudentSetup? setup;
+    var openingStage = 'تهيئة نافذة بيانات الطلاب';
     try {
-      // انتظر اكتمال إطار الضغط أولاً، ثم ادفع مسار DialogRoute مباشرة
-      // على Navigator الجذر حتى لا يضيع فتح النافذة أثناء تحديث واجهة عارض PDF/Word.
+      // احصل على Navigator أثناء صلاحية سياق الصفحة، ثم استخدم مساراً خاماً
+      // لتجنب التقاط InheritedTheme داخل DialogRoute الذي كان يرمي خطأ null.
+      final navigator = Navigator.of(context, rootNavigator: true);
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted) return;
-      setup = await Navigator.of(context, rootNavigator: true).push<StudentSetup>(
-        DialogRoute<StudentSetup>(
-          context: context,
-          barrierDismissible: false,
-          useSafeArea: true,
-          builder: (_) => _StudentSetupDialog(isPdf: _isPdf),
-        ),
+
+      openingStage = 'إنشاء مسار نافذة بيانات الطلاب';
+      final route = RawDialogRoute<StudentSetup>(
+        barrierDismissible: false,
+        barrierColor: Colors.black54,
+        transitionDuration: const Duration(milliseconds: 180),
+        pageBuilder: (routeContext, animation, secondaryAnimation) =>
+            _StudentSetupDialog(isPdf: _isPdf),
+        transitionBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOut,
+            reverseCurve: Curves.easeIn,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.98, end: 1).animate(curved),
+              child: child,
+            ),
+          );
+        },
       );
+
+      openingStage = 'عرض نافذة بيانات الطلاب';
+      setup = await navigator.push<StudentSetup>(route);
     } catch (e, stackTrace) {
-      debugPrint('فتح نافذة بيانات الطلاب فشل: $e\\n$stackTrace');
-      _showMessage('تعذر فتح نافذة بيانات الطلاب: $e', isError: true);
+      debugPrint('فتح نافذة بيانات الطلاب فشل في المرحلة [$openingStage]: $e\\n$stackTrace');
+      _showMessage('تعذر فتح نافذة الطلاب ($openingStage): $e', isError: true);
       return;
     }
+
     final selectedSetup = setup;
     if (!mounted || selectedSetup == null) return;
     setState(() {
