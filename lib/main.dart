@@ -1,29 +1,30 @@
 import 'package:flutter/material.dart';
+import 'screens/activation_screen.dart';
 import 'screens/document_hub_screen.dart';
+import 'services/activation_service.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ExamSecretCodesApp());
+  final status = await ActivationService.getLicenseStatus();
+  runApp(ExamSecretCodesApp(hasValidLicense: status == LicenseStatus.full || status == LicenseStatus.trial));
 }
 
 class ExamSecretCodesApp extends StatelessWidget {
-  const ExamSecretCodesApp({super.key});
+  final bool hasValidLicense;
+  const ExamSecretCodesApp({super.key, required this.hasValidLicense});
 
   @override
   Widget build(BuildContext context) {
     const appColor = Color(0xFF52796F);
     return MaterialApp(
-      title: 'بيانات الطلاب لأوراق الاختبارات',
+      title: 'بيانات الطلاب للاختبارات',
       debugShowCheckedModeBanner: false,
       locale: const Locale('ar'),
       supportedLocales: const [Locale('ar'), Locale('en')],
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: appColor),
-        useMaterial3: true,
-      ),
-      home: const Directionality(
+      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: appColor), useMaterial3: true),
+      home: Directionality(
         textDirection: TextDirection.rtl,
-        child: DocumentHubScreen(),
+        child: hasValidLicense ? const DocumentHubScreen() : const ActivationScreen(),
       ),
     );
   }
