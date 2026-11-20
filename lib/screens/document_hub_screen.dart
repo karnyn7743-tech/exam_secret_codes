@@ -164,8 +164,14 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
         barrierDismissible: false,
         barrierColor: Colors.black54,
         transitionDuration: const Duration(milliseconds: 180),
-        pageBuilder: (routeContext, animation, secondaryAnimation) =>
-            _StudentSetupDialog(isPdf: _isPdf),
+        pageBuilder: (routeContext, animation, secondaryAnimation) {
+          // RawDialogRoute لا يلتقط InheritedTheme تلقائياً مثل DialogRoute.
+          // أعد تمرير سمات الصفحة إلى النافذة حتى لا تُبنى خارج Theme الأصلي.
+          final dialog = _StudentSetupDialog(isPdf: _isPdf);
+          return SafeArea(
+            child: InheritedTheme.captureAll(context, dialog),
+          );
+        },
         transitionBuilder: (context, animation, secondaryAnimation, child) {
           final curved = CurvedAnimation(
             parent: animation,
