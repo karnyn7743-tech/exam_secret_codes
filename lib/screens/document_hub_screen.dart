@@ -152,10 +152,17 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
 
     StudentSetup? setup;
     try {
-      setup = await showDialog<StudentSetup>(
-        context: context,
-        useRootNavigator: true,
-        builder: (_) => _StudentSetupDialog(isPdf: _isPdf),
+      // انتظر اكتمال إطار الضغط أولاً، ثم ادفع مسار DialogRoute مباشرة
+      // على Navigator الجذر حتى لا يضيع فتح النافذة أثناء تحديث واجهة عارض PDF/Word.
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      setup = await Navigator.of(context, rootNavigator: true).push<StudentSetup>(
+        DialogRoute<StudentSetup>(
+          context: context,
+          barrierDismissible: false,
+          useSafeArea: true,
+          builder: (_) => _StudentSetupDialog(isPdf: _isPdf),
+        ),
       );
     } catch (e, stackTrace) {
       debugPrint('فتح نافذة بيانات الطلاب فشل: $e\\n$stackTrace');
@@ -178,6 +185,7 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
     if (currentPath == null) return;
 
     setState(() => _isBusy = true);
+    var promptSaveAfterCreation = false;
     try {
       String sourcePath;
       if (_isPdf) {
@@ -245,6 +253,7 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
         _isPdf = true;
         _wordDocument = null;
       });
+      promptSaveAfterCreation = true;
       _showMessage(
         excelResult == null
             ? 'تم تجهيز صفحات PDF بمقاس A4 مع الاحتفاظ بالمحتوى الأصلي.'
@@ -254,6 +263,12 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
       _showMessage('تعذرت معالجة ملف PDF: $e', isError: true);
     } finally {
       if (mounted) setState(() => _isBusy = false);
+    }
+
+    // بعد إنشاء الملف افتح منتقي الحفظ مباشرة ليختار المستخدم المجلد.
+    // يبقى زر «حفظ نسخة PDF» متاحاً لاحقاً لحفظ نسخة أخرى عند الحاجة.
+    if (mounted && promptSaveAfterCreation) {
+      await _savePdfCopy();
     }
   }
 
