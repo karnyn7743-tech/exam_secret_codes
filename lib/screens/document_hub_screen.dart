@@ -329,7 +329,7 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
       final baseName = rawName
           .replaceAll(RegExp(r'\.pdf\s*$', caseSensitive: false), '')
           .trimRight();
-      final pdfFileName = '\${baseName.isEmpty ? 'document' : baseName}.pdf';
+      final pdfFileName = '${baseName.isEmpty ? 'document' : baseName}.pdf';
       final saved = await FilePicker.platform.saveFile(
         fileName: pdfFileName,
         type: FileType.custom,
