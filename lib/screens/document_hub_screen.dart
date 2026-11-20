@@ -158,9 +158,21 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
   }
 
   Future<void> _configureStudentPdf() async {
-    if (_filePath == null) return;
-    final confirmed = await showDialog<bool>(
+    if (!mounted) return;
+    if (_isBusy) {
+      _showMessage('انتظر حتى تنتهي العملية الحالية.', isError: true);
+      return;
+    }
+    if (_filePath == null) {
+      _showMessage('افتح مستند PDF أو Word أولاً، ثم أعد المحاولة.', isError: true);
+      return;
+    }
+
+    bool? confirmed;
+    try {
+      confirmed = await showDialog<bool>(
       context: context,
+      useRootNavigator: true,
       builder: (dialogContext) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
@@ -224,6 +236,12 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
         ),
       ),
     );
+    } catch (e, stackTrace) {
+      debugPrint('فتح نافذة بيانات الطلاب فشل: $e\\n$stackTrace');
+      _showMessage('تعذر فتح نافذة بيانات الطلاب: $e', isError: true);
+      return;
+    }
+    if (!mounted) return;
     if (confirmed == true) await _createStudentPdf();
   }
 
