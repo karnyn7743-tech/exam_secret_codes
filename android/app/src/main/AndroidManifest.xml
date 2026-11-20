@@ -6,7 +6,7 @@
 
     <application
         android:name="${applicationName}"
-        android:label="بيانات الطلاب للاختبارات"
+        android:label="دق الأرقام السرية"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
 
