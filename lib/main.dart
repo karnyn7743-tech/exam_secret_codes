@@ -1,27 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'screens/activation_screen.dart';
 import 'screens/document_hub_screen.dart';
+import 'services/activation_service.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ExamSecretCodesApp());
+  final status = await ActivationService.getLicenseStatus();
+  runApp(ExamSecretCodesApp(
+    hasValidLicense: status == LicenseStatus.full || status == LicenseStatus.trial,
+  ));
 }
 
 class ExamSecretCodesApp extends StatelessWidget {
-  const ExamSecretCodesApp({super.key});
+  final bool hasValidLicense;
+  const ExamSecretCodesApp({super.key, required this.hasValidLicense});
 
   @override
   Widget build(BuildContext context) {
     const appColor = Color(0xFF52796F);
     return MaterialApp(
-      title: 'إضافة بيانات الطلاب لأوراق الاختبارات',
+      title: 'بيانات الطلاب للاختبارات',
       debugShowCheckedModeBanner: false,
       locale: const Locale('ar', 'YE'),
-      supportedLocales: const [
-        Locale('ar', 'YE'),
-        Locale('ar', ''),
-        Locale('en', ''),
-      ],
+      supportedLocales: const [Locale('ar', 'YE'), Locale('ar', ''), Locale('en', '')],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -31,9 +33,9 @@ class ExamSecretCodesApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: appColor),
         useMaterial3: true,
       ),
-      home: const Directionality(
+      home: Directionality(
         textDirection: TextDirection.rtl,
-        child: DocumentHubScreen(),
+        child: hasValidLicense ? const DocumentHubScreen() : const ActivationScreen(),
       ),
     );
   }
