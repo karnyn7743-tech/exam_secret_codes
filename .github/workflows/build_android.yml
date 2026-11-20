@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - fix/student-setup-dialog-context
     paths:
       - 'lib/**'
       - 'android/**'
