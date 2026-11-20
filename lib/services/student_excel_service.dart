@@ -165,7 +165,13 @@ class StudentExcelService {
       final name = _extractCleanText(sheet.cell(
         CellIndex.indexByColumnRow(columnIndex: column, rowIndex: 1),
       ));
-      if (name.isEmpty || _isTermTotalHeader(name)) continue;
+      // ف١ وف٢ (وأي صيغة لفظية لنهاية الفصل) ليست أسماء أشهر،
+      // لذلك لا تدخل في تسلسل ترقيم الأشهر إطلاقاً.
+      if (name.isEmpty ||
+          _isTermTotalHeader(name) ||
+          _isSemesterTitle(_normalizeArabic(name))) {
+        continue;
+      }
       final key = _normalizeArabic(name);
       if (key.isEmpty || !seen.add(key)) continue;
       months.add(name);
@@ -293,9 +299,9 @@ class StudentExcelService {
     int selectedSubjectIndex = -1;
     for (int i = 0; i < subjectSheets.length; i++) {
       final cleanSheet = _normalizeArabic(subjectSheets[i].key);
-      if (cleanSheet == cleanSubject ||
-          cleanSheet.contains(cleanSubject) ||
-          cleanSubject.contains(cleanSheet)) {
+      // اسم المادة في القائمة يجب أن يطابق اسم ورقة العمل نفسها،
+      // دون مطابقة جزئية قد تختار مادة أخرى متشابهة الاسم.
+      if (cleanSheet == cleanSubject) {
         selectedSubjectIndex = i;
         break;
       }
@@ -353,7 +359,7 @@ class StudentExcelService {
     if (cleanExpected.isNotEmpty) {
       for (final sheetName in excel.tables.keys) {
         final normSheet = _normalizeArabic(sheetName);
-        if (normSheet == cleanExpected || normSheet.contains(cleanExpected) || cleanExpected.contains(normSheet)) {
+        if (normSheet == cleanExpected) {
           targetSheetName = sheetName;
           break;
         }
@@ -414,13 +420,13 @@ class StudentExcelService {
         }
       }
 
-      final finalSecretCode = rawSecret.isNotEmpty ? rawSecret : '$rawSeat-$calculatedCode';
-
+      // الرقم السري ومحتوى QR يؤخذان حصراً من العمود D.
+      // لا ننشئ بديلاً مشتقاً من رقم الجلوس أو رقم الشهر/المادة.
       students.add(StudentData(
         seatNo: rawSeat,
         name: rawName,
         grade: rawGrade.isNotEmpty ? rawGrade : requiredGrade,
-        secretCode: finalSecretCode,
+        secretCode: rawSecret,
       ));
       
       r++;
