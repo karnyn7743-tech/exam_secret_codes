@@ -1,0 +1,63 @@
+name: Issue device license
+
+on:
+  workflow_dispatch:
+    inputs:
+      device_id:
+        description: 'Device ID copied from the activation screen'
+        required: true
+        type: string
+      license_type:
+        description: 'License type'
+        required: true
+        type: choice
+        options:
+          - trial
+          - full
+
+permissions:
+  contents: write
+
+concurrency:
+  group: exam-secret-codes-license-issuer
+  cancel-in-progress: false
+
+jobs:
+  issue:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout main and trial registry
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install signing dependency
+        run: pip install cryptography
+
+      - name: Issue signed license
+        env:
+          LICENSE_PRIVATE_KEY_PEM: ${{ secrets.LICENSE_PRIVATE_KEY_PEM }}
+          DEVICE_ID: ${{ inputs.device_id }}
+          LICENSE_TYPE: ${{ inputs.license_type }}
+        run: python tool/issue_license.py
+
+      - name: Save one-time trial registry
+        if: inputs.license_type == 'trial'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .licenses/trial_devices.json
+          git commit -m "Register issued trial license"
+          git push
+
+      - name: Upload generated license
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-license
+          path: license.txt
+          retention-days: 7
