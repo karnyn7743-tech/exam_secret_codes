@@ -146,14 +146,15 @@ class MainActivity : FlutterActivity() {
         val issuedAt = payload.optLong("issuedAt", 0L)
         val expiresAt = payload.optLong("expiresAt", 0L)
         val now = System.currentTimeMillis() / 1000L
-        if (issuedAt <= 0L || issuedAt > now + 300L) return mapOf("valid" to false)
+        if (issuedAt <= 0L) return mapOf("valid" to false)
 
         return when (type) {
             "full" -> mapOf("valid" to true, "type" to "full", "expiresAt" to 0L)
             "trial" -> {
                 val expectedDuration = 30L * 24L * 60L * 60L
                 val duration = expiresAt - issuedAt
-                val valid = duration in (expectedDuration - 300L)..(expectedDuration + 300L) &&
+                val valid = issuedAt <= now + 300L &&
+                    duration in (expectedDuration - 300L)..(expectedDuration + 300L) &&
                     now < expiresAt
                 mapOf("valid" to valid, "type" to "trial", "expiresAt" to expiresAt)
             }
