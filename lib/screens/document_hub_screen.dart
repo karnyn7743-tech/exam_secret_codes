@@ -162,12 +162,13 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
       _showMessage('تعذر فتح نافذة بيانات الطلاب: $e', isError: true);
       return;
     }
-    if (!mounted || setup == null) return;
+    final selectedSetup = setup;
+    if (!mounted || selectedSetup == null) return;
     setState(() {
-      _excelPath = setup!.excelPath;
-      _subjectController.text = setup.subject;
-      _gradeController.text = setup.grade;
-      _examTitleController.text = setup.period;
+      _excelPath = selectedSetup.excelPath;
+      _subjectController.text = selectedSetup.subject;
+      _gradeController.text = selectedSetup.grade;
+      _examTitleController.text = selectedSetup.period;
     });
     await _createStudentPdf();
   }
@@ -632,15 +633,13 @@ class _StudentSetupDialogState extends State<_StudentSetupDialog> {
     if (value == null || _excelPath == null) return;
     setState(() { _loading = true; _error = null; _subject = value; _grade = null; _period = null; _grades = []; _periods = []; });
     try {
-      final results = await Future.wait<List<String>>([
-        StudentExcelService.getGrades(_excelPath!, value),
-        StudentExcelService.getPeriods(_excelPath!, value),
-      ]);
+      final options = await StudentExcelService.getSheetOptions(_excelPath!, value);
       if (!mounted) return;
       setState(() {
-        _grades = results[0]; _periods = results[1];
+        _grades = options.grades;
+        _periods = options.periods;
         if (_grades.isEmpty) _error = 'لم تُوجد صفوف دراسية في العمود C ابتداءً من الصف الرابع.';
-        if (_periods.length <= 2) _error = 'لم تُوجد أسماء أشهر في الصف الثاني بدءاً من العمود E.';
+        else if (_periods.length <= 2) _error = 'لم تُوجد أسماء أشهر؛ يتاح اختيار ف١ أو ف٢ إذا كان ذلك مطلوباً.';
       });
     } catch (e) { if (mounted) setState(() => _error = 'تعذر قراءة بيانات ورقة المادة: $e'); }
     finally { if (mounted) setState(() => _loading = false); }
