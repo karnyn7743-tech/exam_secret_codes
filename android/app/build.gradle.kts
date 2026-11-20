@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -15,33 +14,36 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.exam_secret_codes"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        
-        // ضبط الحد الأدنى إلى 21 لدعم ML Kit و Mobile Scanner
         minSdk = 21
         targetSdk = 36
-        
-        // تفعيل MultiDex لاستيعاب مكتبات معالجة الصور والذكاء الاصطناعي والإكسيل
         multiDexEnabled = true
-
-        // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
-        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
-        // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
-        // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            val signingFile = file("exam-secret-codes-release.jks")
+            val storePass = System.getenv("ANDROID_STORE_PASSWORD")
+            val keyPass = System.getenv("ANDROID_KEY_PASSWORD")
+            val keyAliasValue = System.getenv("ANDROID_KEY_ALIAS")
+            if (!signingFile.exists() || storePass.isNullOrBlank() ||
+                keyPass.isNullOrBlank() || keyAliasValue.isNullOrBlank()) {
+                throw GradleException(
+                    "Release signing secrets are missing. Configure the four ANDROID_* GitHub Actions secrets."
+                )
+            }
+            storeFile = signingFile
+            storePassword = storePass
+            keyPassword = keyPass
+            keyAlias = keyAliasValue
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
-
-            // تعطيل R8 نهائياً لتفادي أخطاء Missing classes الخاصة بـ ML Kit
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             isShrinkResources = false
         }
@@ -57,7 +59,6 @@ kotlin {
 flutter {
     source = "../.."
 }
-
 
 dependencies {
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
