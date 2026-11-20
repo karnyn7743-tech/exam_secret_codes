@@ -14,7 +14,7 @@ class ExamSecretCodesApp extends StatelessWidget {
   Widget build(BuildContext context) {
     const appColor = Color(0xFF52796F);
     return MaterialApp(
-      title: 'بيانات الطلاب لأوراق الاختبارات',
+      title: 'إضافة بيانات الطلاب لأوراق الاختبارات',
       debugShowCheckedModeBanner: false,
       locale: const Locale('ar', 'YE'),
       supportedLocales: const [
