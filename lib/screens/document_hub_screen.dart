@@ -139,24 +139,6 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
     }
   }
 
-  Future<void> _pickExcel() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['xlsx', 'xlsm'],
-        withData: false,
-      );
-      if (result == null || result.files.isEmpty) return;
-      final path = result.files.single.path;
-      if (path == null) throw Exception('تعذر الوصول إلى ملف Excel.');
-      if (!mounted) return;
-      setState(() => _excelPath = path);
-      _showMessage('تم اختيار ملف بيانات الطلاب.');
-    } catch (e) {
-      _showMessage('تعذر اختيار ملف Excel: $e', isError: true);
-    }
-  }
-
   Future<void> _configureStudentPdf() async {
     if (!mounted) return;
     if (_isBusy) {
@@ -168,81 +150,26 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
       return;
     }
 
-    bool? confirmed;
+    StudentSetup? setup;
     try {
-      confirmed = await showDialog<bool>(
-      context: context,
-      useRootNavigator: true,
-      builder: (dialogContext) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          backgroundColor: const Color(0xFFFAF8F1),
-          title: Text(_isPdf ? 'إضافة بيانات الطلاب إلى PDF' : 'إنشاء نسخ الطلاب من Word'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: _subjectController,
-                  decoration: const InputDecoration(
-                    labelText: 'اسم المادة / ورقة العمل في Excel',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _gradeController,
-                  decoration: const InputDecoration(labelText: 'الصف الدراسي'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _examTitleController,
-                  decoration: const InputDecoration(labelText: 'اسم الاختبار أو الشهر'),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: _pickExcel,
-                  icon: const Icon(Icons.table_view),
-                  label: Text(
-                    _excelPath == null
-                        ? 'اختيار ملف Excel للطلاب'
-                        : 'تم اختيار ملف Excel',
-                  ),
-                ),
-                if (_excelPath != null)
-                  Text(
-                    _excelPath!.split(Platform.pathSeparator).last,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF52796F)),
-                  ),
-                const SizedBox(height: 5),
-                const Text(
-                  'سيتم إنشاء نسخة PDF لكل طالب، وتظهر بياناته ورقم جلوسه ورمز QR وكود المادة في الصفحة الأولى فقط. يبقى ملف Word الأصلي قابلاً للتحرير دون تغيير.',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF777568)),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('إلغاء'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('إنشاء نسخ الطلاب'),
-            ),
-          ],
-        ),
-      ),
-    );
+      setup = await showDialog<StudentSetup>(
+        context: context,
+        useRootNavigator: true,
+        builder: (_) => _StudentSetupDialog(isPdf: _isPdf),
+      );
     } catch (e, stackTrace) {
       debugPrint('فتح نافذة بيانات الطلاب فشل: $e\\n$stackTrace');
       _showMessage('تعذر فتح نافذة بيانات الطلاب: $e', isError: true);
       return;
     }
-    if (!mounted) return;
-    if (confirmed == true) await _createStudentPdf();
+    if (!mounted || setup == null) return;
+    setState(() {
+      _excelPath = setup!.excelPath;
+      _subjectController.text = setup.subject;
+      _gradeController.text = setup.grade;
+      _examTitleController.text = setup.period;
+    });
+    await _createStudentPdf();
   }
 
   Future<void> _createStudentPdf() async {
@@ -658,6 +585,109 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
                   ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+class StudentSetup {
+  final String excelPath;
+  final String subject;
+  final String grade;
+  final String period;
+  const StudentSetup({required this.excelPath, required this.subject, required this.grade, required this.period});
+}
+
+class _StudentSetupDialog extends StatefulWidget {
+  final bool isPdf;
+  const _StudentSetupDialog({required this.isPdf});
+  @override
+  State<_StudentSetupDialog> createState() => _StudentSetupDialogState();
+}
+
+class _StudentSetupDialogState extends State<_StudentSetupDialog> {
+  String? _excelPath, _subject, _grade, _period;
+  List<String> _subjects = [], _grades = [], _periods = [];
+  bool _loading = false;
+  String? _error;
+
+  Future<void> _chooseExcel() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: const ['xlsx', 'xlsm'], withData: false);
+      if (result == null || result.files.isEmpty) return;
+      final path = result.files.single.path;
+      if (path == null || path.trim().isEmpty) throw Exception('تعذر الوصول إلى ملف Excel المحدد.');
+      setState(() { _loading = true; _error = null; _excelPath = null; _subject = null; _grade = null; _period = null; _subjects = []; _grades = []; _periods = []; });
+      final subjects = await StudentExcelService.getSubjectSheetNames(path);
+      if (!mounted) return;
+      if (subjects.isEmpty) throw Exception('لم يُعثر على أوراق مواد تحتوي على كشف الطلاب المتوقع.');
+      setState(() { _excelPath = path; _subjects = subjects; });
+    } catch (e) {
+      if (mounted) setState(() => _error = 'تعذر قراءة ملف Excel: $e');
+    } finally { if (mounted) setState(() => _loading = false); }
+  }
+
+  Future<void> _selectSubject(String? value) async {
+    if (value == null || _excelPath == null) return;
+    setState(() { _loading = true; _error = null; _subject = value; _grade = null; _period = null; _grades = []; _periods = []; });
+    try {
+      final results = await Future.wait<List<String>>([
+        StudentExcelService.getGrades(_excelPath!, value),
+        StudentExcelService.getPeriods(_excelPath!, value),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _grades = results[0]; _periods = results[1];
+        if (_grades.isEmpty) _error = 'لم تُوجد صفوف دراسية في العمود C ابتداءً من الصف الرابع.';
+        if (_periods.length <= 2) _error = 'لم تُوجد أسماء أشهر في الصف الثاني بدءاً من العمود E.';
+      });
+    } catch (e) { if (mounted) setState(() => _error = 'تعذر قراءة بيانات ورقة المادة: $e'); }
+    finally { if (mounted) setState(() => _loading = false); }
+  }
+
+  Widget _dropdown({required String label, required String? value, required List<String> values, required ValueChanged<String?>? onChanged}) {
+    return DropdownButtonFormField<String>(
+      value: value, isExpanded: true,
+      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+      items: values.map((item) => DropdownMenuItem<String>(value: item, child: Text(item, overflow: TextOverflow.ellipsis))).toList(),
+      onChanged: _loading ? null : onChanged,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        backgroundColor: const Color(0xFFFAF8F1),
+        title: Text(widget.isPdf ? 'إضافة بيانات الطلاب إلى PDF' : 'إنشاء نسخ الطلاب من Word'),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                onPressed: _loading ? null : _chooseExcel, icon: const Icon(Icons.table_view),
+                label: Text(_excelPath == null ? '١ - اختيار ملف Excel' : 'تم اختيار ملف Excel'),
+              )),
+              const SizedBox(height: 12),
+              _dropdown(label: '٢ - المادة / ورقة العمل', value: _subject, values: _subjects, onChanged: _excelPath == null ? null : _selectSubject),
+              const SizedBox(height: 12),
+              _dropdown(label: '٣ - الصف الدراسي', value: _grade, values: _grades, onChanged: _subject == null ? null : (v) => setState(() => _grade = v)),
+              const SizedBox(height: 12),
+              _dropdown(label: '٤ - الشهر أو الاختبار', value: _period, values: _periods, onChanged: _subject == null ? null : (v) => setState(() => _period = v)),
+              if (_loading) ...[const SizedBox(height: 12), const LinearProgressIndicator(), const SizedBox(height: 6), const Text('جارٍ قراءة بيانات ملف Excel...')],
+              if (_error != null) ...[const SizedBox(height: 10), Text(_error!, style: const TextStyle(color: Colors.red))],
+              const SizedBox(height: 12),
+              const Text('سيتم إنشاء نسخة لكل طالب، وتظهر بياناته ورقم جلوسه ورمز QR وكود المادة في الصفحة الأولى فقط.', style: TextStyle(fontSize: 12, color: Color(0xFF777568))),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: _loading ? null : () => Navigator.pop(context), child: const Text('إلغاء')),
+          FilledButton(
+            onPressed: _loading || _excelPath == null || _subject == null || _grade == null || _period == null ? null : () => Navigator.pop(context, StudentSetup(excelPath: _excelPath!, subject: _subject!, grade: _grade!, period: _period!)),
+            child: const Text('إنشاء نسخ الطلاب'),
           ),
         ],
       ),
