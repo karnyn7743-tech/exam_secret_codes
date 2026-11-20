@@ -323,9 +323,19 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
       final bytes = await File(path).readAsBytes();
       // مرّر الامتداد صراحةً إلى منتقي الحفظ حتى يتعامل Android معه
       // كملف PDF، ولا يترك مسافة أو امتداداً ناقصاً في الاسم المقترح.
+      // مرّر الامتداد صراحةً إلى منتقي الحفظ حتى يتعامل Android معه
+      // كملف PDF، ولا يترك امتداداً ناقصاً أو مسافات بعد الاسم.
       final rawName = (_fileName ?? 'document.pdf').trim();
       final baseName = rawName
-          .replaceAll(RegExp(r'\\.pdf\\s*
+          .replaceAll(RegExp(r'\.pdf\s*$', caseSensitive: false), '')
+          .trimRight();
+      final pdfFileName = '\${baseName.isEmpty ? 'document' : baseName}.pdf';
+      final saved = await FilePicker.platform.saveFile(
+        fileName: pdfFileName,
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+        bytes: bytes,
+      );
       if (saved == null) {
         _showMessage('تم إلغاء حفظ الملف.');
       } else {
