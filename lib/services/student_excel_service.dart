@@ -32,6 +32,12 @@ class StudentExcelResult {
   });
 }
 
+class StudentSheetOptions {
+  final List<String> grades;
+  final List<String> periods;
+  const StudentSheetOptions({required this.grades, required this.periods});
+}
+
 class StudentExcelService {
   /// إصلاح أبعاد ملف الإكسيل المخزنة بشكل خاطئ
   static Uint8List _fixExcelDimensions(Uint8List bytes) {
@@ -182,28 +188,18 @@ class StudentExcelService {
         .toList(growable: false);
   }
 
-  static Future<List<String>> getGrades(String filePath, String sheetName) async {
+  static Future<StudentSheetOptions> getSheetOptions(String filePath, String sheetName) async {
     final excel = await _loadExcelFile(filePath);
     final sheet = excel.tables[sheetName];
     if (sheet == null) throw Exception('ورقة المادة المحددة غير موجودة في ملف Excel.');
     final grades = <String>[];
-    final seen = <String>{};
+    final seenGrades = <String>{};
     for (int row = 3; row < sheet.maxRows; row++) {
-      final grade = _extractCleanText(sheet.cell(
-        CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: row),
-      ));
+      final grade = _extractCleanText(sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: row)));
       final key = _normalizeArabic(grade);
-      if (grade.isEmpty || key.isEmpty || !seen.add(key)) continue;
-      grades.add(grade);
+      if (grade.isNotEmpty && key.isNotEmpty && seenGrades.add(key)) grades.add(grade);
     }
-    return grades;
-  }
-
-  static Future<List<String>> getPeriods(String filePath, String sheetName) async {
-    final excel = await _loadExcelFile(filePath);
-    final sheet = excel.tables[sheetName];
-    if (sheet == null) throw Exception('ورقة المادة المحددة غير موجودة في ملف Excel.');
-    return <String>[...extractMonthsFromSheet(sheet), 'ف١', 'ف٢'];
+    return StudentSheetOptions(grades: grades, periods: <String>[...extractMonthsFromSheet(sheet), 'ف١', 'ف٢']);
   }
   static int _extractMonthOrderFromTitle(String examTitle, Sheet sheet, int totalMonths) {
     final title = _normalizeArabic(examTitle);
