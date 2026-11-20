@@ -144,39 +144,67 @@ class StudentExcelService {
 
     return false;
   }
-  static int detectTotalMonths(Sheet sheet) {
-    final cellFourthMonth = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 19, rowIndex: 1));
-    final rawText = _extractCleanText(cellFourthMonth);
-    final text = _normalizeArabic(rawText);
-
-    if (text.isEmpty || text == 'م1' || text == 'م١' || text.contains('محصله') || text.contains('فصل1')) {
-      return 6;
-    }
-    return 8;
+  static bool _isTermTotalHeader(String value) {
+    final normalized = _normalizeArabic(value);
+    return normalized == 'م1' || normalized == 'م2' ||
+        normalized == 'م١' || normalized == 'م٢' ||
+        normalized == 'm1' || normalized == 'm2';
   }
+
   static List<String> extractMonthsFromSheet(Sheet sheet, {int? totalMonths}) {
-    final int resolvedTotal = totalMonths ?? detectTotalMonths(sheet);
-    List<String> months = [];
-    int currentCol = 4;
-    final int monthsInTerm1 = (resolvedTotal == 6) ? 3 : 4;
-
-    for (int m = 1; m <= resolvedTotal; m++) {
-      final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: currentCol, rowIndex: 1));
-      final monthName = _extractCleanText(cell);
-      if (monthName.isNotEmpty) {
-        months.add(monthName);
-      } else {
-        months.add('شهر $m');
-      }
-
-      currentCol += 5;
-      if (m == monthsInTerm1) {
-        currentCol += 2;
-      }
+    final months = <String>[];
+    final seen = <String>{};
+    // قراءة عناوين الصف الثاني فعلياً بدءاً من العمود E.
+    for (int column = 4; column < sheet.maxColumns; column++) {
+      final name = _extractCleanText(sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: column, rowIndex: 1),
+      ));
+      if (name.isEmpty || _isTermTotalHeader(name)) continue;
+      final key = _normalizeArabic(name);
+      if (key.isEmpty || !seen.add(key)) continue;
+      months.add(name);
     }
     return months;
   }
 
+  static int detectTotalMonths(Sheet sheet) => extractMonthsFromSheet(sheet).length;
+
+  static Future<Excel> _loadExcelFile(String filePath) async {
+    final bytes = await File(filePath).readAsBytes();
+    return Excel.decodeBytes(_fixExcelDimensions(bytes));
+  }
+
+  static Future<List<String>> getSubjectSheetNames(String filePath) async {
+    final excel = await _loadExcelFile(filePath);
+    return excel.tables.entries
+        .where((entry) => _isSubjectSheet(entry.value))
+        .map((entry) => entry.key)
+        .toList(growable: false);
+  }
+
+  static Future<List<String>> getGrades(String filePath, String sheetName) async {
+    final excel = await _loadExcelFile(filePath);
+    final sheet = excel.tables[sheetName];
+    if (sheet == null) throw Exception('ورقة المادة المحددة غير موجودة في ملف Excel.');
+    final grades = <String>[];
+    final seen = <String>{};
+    for (int row = 3; row < sheet.maxRows; row++) {
+      final grade = _extractCleanText(sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: row),
+      ));
+      final key = _normalizeArabic(grade);
+      if (grade.isEmpty || key.isEmpty || !seen.add(key)) continue;
+      grades.add(grade);
+    }
+    return grades;
+  }
+
+  static Future<List<String>> getPeriods(String filePath, String sheetName) async {
+    final excel = await _loadExcelFile(filePath);
+    final sheet = excel.tables[sheetName];
+    if (sheet == null) throw Exception('ورقة المادة المحددة غير موجودة في ملف Excel.');
+    return <String>[...extractMonthsFromSheet(sheet), 'ف١', 'ف٢'];
+  }
   static int _extractMonthOrderFromTitle(String examTitle, Sheet sheet, int totalMonths) {
     final title = _normalizeArabic(examTitle);
     final dynamicMonths = extractMonthsFromSheet(sheet, totalMonths: totalMonths);
@@ -239,17 +267,13 @@ class StudentExcelService {
 
     // يكفي وجود كلمة "فصل" مع تحديد الأول أو الثاني؛ وهذا يشمل:
     // الفصل الدراسي الأول/الثاني، ونهاية الفصل الدراسي: الأول/الثاني.
-    final hasSemesterWord = cleanTitle.contains('فصل');
-    final isFirstSemester =
-        cleanTitle.contains('اول') ||
-        cleanTitle.contains('١') ||
-        cleanTitle.contains('1');
-    final isSecondSemester =
-        cleanTitle.contains('ثاني') ||
-        cleanTitle.contains('٢') ||
-        cleanTitle.contains('2');
-
-    return hasSemesterWord && (isFirstSemester || isSecondSemester);
+    final isFirstSemester = cleanTitle == 'ف1' || cleanTitle == 'ف١' ||
+        cleanTitle.contains('اول') || cleanTitle.contains('١') || cleanTitle.contains('1');
+    final isSecondSemester = cleanTitle == 'ف2' || cleanTitle == 'ف٢' ||
+        cleanTitle.contains('ثاني') || cleanTitle.contains('٢') || cleanTitle.contains('2');
+    final isSemester = cleanTitle == 'ف1' || cleanTitle == 'ف١' ||
+        cleanTitle == 'ف2' || cleanTitle == 'ف٢' || cleanTitle.contains('فصل');
+    return isSemester && (isFirstSemester || isSecondSemester);
   }
 
   static int resolveSmartQrCodeNumberDynamic({
