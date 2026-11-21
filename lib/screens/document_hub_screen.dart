@@ -720,3 +720,4 @@ class _StudentSetupDialogState extends State<_StudentSetupDialog> {
       ),
     );
   }
+}
