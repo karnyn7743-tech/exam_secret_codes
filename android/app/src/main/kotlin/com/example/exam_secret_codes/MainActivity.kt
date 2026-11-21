@@ -9,6 +9,7 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.os.Handler
 import android.provider.Settings
+import android.os.Build
 import android.util.Base64
 import java.security.KeyFactory
 import java.security.MessageDigest
@@ -35,6 +36,7 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     private val channelName = "com.example.exam_secret_codes/document_pdf"
     private val licenseChannelName = "com.example.exam_secret_codes/license"
+    private val legacySecretSalt = "EXAM_MAKER_SECURE_SALT_2026_@ALBAETHEE"
     private val licensePublicKey = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvlaA/c3IBKEro+rvm6hjYFCbUmB3xNwpN6FlqUw1RtuFB37u0blR37TmMxB/yX0plEEGjWDeH3+nvG2/KnVaBYXN/6qwc+bSHcT5nzmRK0zMfFutX302Ad4f9l8BoTrv83p7kxIBoF0LoVi090FRrWRtHRK8fFysfOcnp9hsKJJ1HH8gHf9YtuMmIkBml3RL1en9zgesQtkQKaDgHE1h1jJSLCiFl6/t/xf+z4bqS/WVl2fVYcOENl+9LV6mFmNunPmXVj9SlTQ/rKU0SEUoy41kj5ZFfG8uCMs/7eBLPLCMlIP2F0pp88u4IMkNyYXViry4TpytkQawAvddF3oXiwIDAQAB"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -45,9 +47,21 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "getDeviceId" -> {
                         try {
-                            result.success(getStableDeviceId())
+                            result.success(getLegacyCompatibleDeviceId())
                         } catch (e: Exception) {
                             result.error("DEVICE_ID_FAILED", e.message, null)
+                        }
+                    }
+                    "verifyLegacyKey" -> {
+                        val key = call.argument<String>("key")
+                        if (key.isNullOrBlank()) {
+                            result.success(mapOf("valid" to false))
+                        } else {
+                            try {
+                                result.success(verifyLegacyKey(key))
+                            } catch (_: Exception) {
+                                result.success(mapOf("valid" to false))
+                            }
                         }
                     }
                     "verifyLicense" -> {
@@ -111,6 +125,18 @@ class MainActivity : FlutterActivity() {
     }
 
 
+    // device_info_plus AndroidInfo.id maps to android.os.Build.ID.
+    // This reproduces the exact fingerprint used by exam_maker_app.
+    private fun getLegacyCompatibleDeviceId(): String {
+        val rawId = Build.ID.takeIf { it.isNotEmpty() }
+            ?: "${Build.BRAND}_${Build.MODEL}_${Build.FINGERPRINT}"
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(rawId.toByteArray(Charsets.UTF_8))
+        val hex = digest.joinToString("") { "%02X".format(it) }
+        return "${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}"
+    }
+
+    // Retain support for RSA licenses already issued with the previous Android ID.
     private fun getStableDeviceId(): String {
         val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
             ?: throw IllegalStateException("Android ID is unavailable")
@@ -118,6 +144,27 @@ class MainActivity : FlutterActivity() {
             .digest(androidId.toByteArray(Charsets.UTF_8))
         val hex = digest.joinToString("") { "%02X".format(it) }.take(12)
         return "${hex.substring(0, 4)}-${hex.substring(4, 8)}-${hex.substring(8, 12)}"
+    }
+
+    private fun verifyLegacyKey(enteredKey: String): Map<String, Any?> {
+        val cleanDevice = getLegacyCompatibleDeviceId().replace("-", "").trim().uppercase()
+        val cleanKey = enteredKey.trim().uppercase()
+
+        val fullCombined = "$cleanDevice:FULL:$legacySecretSalt"
+        val fullHash = MessageDigest.getInstance("SHA-256")
+            .digest(fullCombined.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02X".format(it) }
+        val expectedFull = "FL-${fullHash.substring(0, 4)}-${fullHash.substring(4, 8)}-${fullHash.substring(8, 12)}"
+        if (cleanKey == expectedFull) return mapOf("valid" to true, "type" to "full")
+
+        val trialCombined = "$cleanDevice:TRIAL:$legacySecretSalt"
+        val trialHash = MessageDigest.getInstance("SHA-256")
+            .digest(trialCombined.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02X".format(it) }
+        val expectedTrial = "TR-${trialHash.substring(0, 4)}-${trialHash.substring(4, 8)}-${trialHash.substring(8, 12)}"
+        if (cleanKey == expectedTrial) return mapOf("valid" to true, "type" to "trial")
+
+        return mapOf("valid" to false)
     }
 
     private fun verifyLicenseToken(token: String): Map<String, Any?> {
@@ -139,7 +186,8 @@ class MainActivity : FlutterActivity() {
         val payload = JSONObject(String(payloadBytes, Charsets.UTF_8))
         if (payload.optInt("v") != 1 ||
             payload.optString("app") != "exam_secret_codes" ||
-            payload.optString("device") != getStableDeviceId()
+            (payload.optString("device") != getStableDeviceId() &&
+                payload.optString("device") != getLegacyCompatibleDeviceId())
         ) return mapOf("valid" to false)
 
         val type = payload.optString("type")
