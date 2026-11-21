@@ -72,16 +72,20 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: flutter build apk --release
 
-      - name: Verify APK
+      - name: Rename APK to Arabic filename
         shell: bash
         run: |
-          APK="build/app/outputs/flutter-apk/app-release.apk"
-          test -s "$APK"
-          ls -lh "$APK"
+          SOURCE_APK="build/app/outputs/flutter-apk/app-release.apk"
+          TARGET_APK="build/app/outputs/flutter-apk/دق الأرقام السرية.apk"
+          test -s "$SOURCE_APK"
+          mv "$SOURCE_APK" "$TARGET_APK"
+          test -s "$TARGET_APK"
+          ls -lh "$TARGET_APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: exam-secret-codes-android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/دق الأرقام السرية.apk
+          if-no-files-found: error
           retention-days: 30
