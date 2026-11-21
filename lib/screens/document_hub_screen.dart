@@ -402,7 +402,7 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
       backgroundColor: const Color(0xFFF3F0E7),
       appBar: AppBar(
         title: const Text(
-          'محرر المستندات',
+          'مولد أوراق الإختبارات ببيانات الطلاب',
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         centerTitle: true,
