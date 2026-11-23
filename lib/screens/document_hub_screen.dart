@@ -29,6 +29,8 @@ class _DocumentHubScreenState extends State<DocumentHubScreen> {
   String? _excelPath;
   bool _isPdf = true;
   bool _isBusy = false;
+  // false: الصفحة الأولى (الافتراضي)، true: الصفحة الأخيرة.
+  bool _studentDataOnLastPage = false;
   String? _loadError;
   double _cropTopFraction = 0.0;
   double _cropBottomFraction = 0.0;
