@@ -98,6 +98,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 val subjectCode = (arguments["subjectCode"] as? Number)?.toInt() ?: 1
+                val studentDataOnLastPage = arguments["studentDataOnLastPage"] as? Boolean ?: false
                 val cropTopFraction = (arguments["cropTopFraction"] as? Number)?.toFloat() ?: 0f
                 val cropBottomFraction = (arguments["cropBottomFraction"] as? Number)?.toFloat() ?: 0f
 
@@ -113,6 +114,7 @@ class MainActivity : FlutterActivity() {
                             outputPath = outputPath,
                             students = students,
                             subjectCode = subjectCode,
+                            studentDataOnLastPage = studentDataOnLastPage,
                             cropTopFraction = cropTopFraction,
                             cropBottomFraction = cropBottomFraction
                         )
@@ -219,6 +221,7 @@ class MainActivity : FlutterActivity() {
         outputPath: String,
         students: List<Map<String, String>>,
         subjectCode: Int,
+        studentDataOnLastPage: Boolean,
         cropTopFraction: Float,
         cropBottomFraction: Float
     ) {
@@ -253,10 +256,11 @@ class MainActivity : FlutterActivity() {
 
                         val pageWidth = PDRectangle.A4.width
                         val pageHeight = PDRectangle.A4.height
-                        val hasStudentData = !student["seatNo"].isNullOrBlank() && pageIndex == 0
+                        val studentDataPageIndex = if (studentDataOnLastPage) source.numberOfPages - 1 else 0
+                        val hasStudentData = !student["seatNo"].isNullOrBlank() && pageIndex == studentDataPageIndex
 
                         // Reserve exactly 1 cm for student details and 3 cm for
-                        // the subject code, QR and grade box on the first page.
+                        // the subject code, QR and grade box on the selected data page.
                         val topReserve = if (hasStudentData) 28.35f else 0f
                         val bottomReserve = if (hasStudentData) 85.04f else 0f
                         val sideMargin = 20f
@@ -278,8 +282,8 @@ class MainActivity : FlutterActivity() {
                         val bottomCrop = sourceHeight * effectiveBottomFraction
                         val visibleHeight = (sourceHeight - topCrop - bottomCrop).coerceAtLeast(1f)
 
-                        // Stretch the retained first-page content across the available
-                        // rectangle between the student header and QR/grade footer.
+                        // Stretch the retained content on the first source page (when cropped),
+                        // or the selected student-data page, across its available rectangle.
                         val scaleX = contentWidth / sourceWidth
                         val scaleY = contentHeight / visibleHeight
                         val offsetX = sideMargin
