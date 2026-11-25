@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/student_excel_service.dart';
+import '../services/excel_file_access_service.dart';
 import 'package:pdfx/pdfx.dart';
 import 'package:printing/printing.dart';
 
@@ -705,15 +706,22 @@ class _StudentSetupDialogState extends State<_StudentSetupDialog> {
 
   Future<void> _chooseExcel() async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: const ['xlsx', 'xlsm'], withData: false);
-      if (result == null || result.files.isEmpty) return;
-      final path = result.files.single.path;
-      if (path == null || path.trim().isEmpty) throw Exception('تعذر الوصول إلى ملف Excel المحدد.');
-      setState(() { _loading = true; _error = null; _excelPath = null; _subject = null; _grade = null; _period = null; _subjects = []; _grades = []; _periods = []; });
-      final subjects = await StudentExcelService.getSubjectSheetNames(path);
+      setState(() { _loading = true; _error = null; });
+      final selection = await ExcelFileAccessService.pickExcelDocument();
+      if (selection == null) return;
+      setState(() {
+        _excelPath = null;
+        _subject = null;
+        _grade = null;
+        _period = null;
+        _subjects = [];
+        _grades = [];
+        _periods = [];
+      });
+      final subjects = await StudentExcelService.getSubjectSheetNames(selection.reference);
       if (!mounted) return;
       if (subjects.isEmpty) throw Exception('لم يُعثر على أوراق مواد تحتوي على كشف الطلاب المتوقع.');
-      setState(() { _excelPath = path; _subjects = subjects; });
+      setState(() { _excelPath = selection.reference; _subjects = subjects; });
     } catch (e) {
       if (mounted) setState(() => _error = 'تعذر قراءة ملف Excel: $e');
     } finally { if (mounted) setState(() => _loading = false); }
