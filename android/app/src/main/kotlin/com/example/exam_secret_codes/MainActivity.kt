@@ -1,5 +1,9 @@
 package com.example.exam_secret_codes
 
+import android.content.Intent
+import android.database.Cursor
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -35,6 +39,8 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val channelName = "com.example.exam_secret_codes/document_pdf"
+    private val excelPickerRequestCode = 7412
+    private var pendingExcelPickerResult: MethodChannel.Result? = null
     private val licenseChannelName = "com.example.exam_secret_codes/license"
     private val legacySecretSalt = "EXAM_MAKER_SECURE_SALT_2026_@ALBAETHEE"
     private val licensePublicKey = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvlaA/c3IBKEro+rvm6hjYFCbUmB3xNwpN6FlqUw1RtuFB37u0blR37TmMxB/yX0plEEGjWDeH3+nvG2/KnVaBYXN/6qwc+bSHcT5nzmRK0zMfFutX302Ad4f9l8BoTrv83p7kxIBoF0LoVi090FRrWRtHRK8fFysfOcnp9hsKJJ1HH8gHf9YtuMmIkBml3RL1en9zgesQtkQKaDgHE1h1jJSLCiFl6/t/xf+z4bqS/WVl2fVYcOENl+9LV6mFmNunPmXVj9SlTQ/rKU0SEUoy41kj5ZFfG8uCMs/7eBLPLCMlIP2F0pp88u4IMkNyYXViry4TpytkQawAvddF3oXiwIDAQAB"
@@ -82,9 +88,55 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
-                if (call.method != "createStudentPdf") {
-                    result.notImplemented()
-                    return@setMethodCallHandler
+                when (call.method) {
+                    "pickExcelDocument" -> {
+                        if (pendingExcelPickerResult != null) {
+                            result.error("PICKER_BUSY", "هناك عملية اختيار ملف جارية.", null)
+                            return@setMethodCallHandler
+                        }
+                        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "*/*"
+                            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                "application/vnd.ms-excel.sheet.macroEnabled.12",
+                                "application/vnd.ms-excel",
+                                "application/octet-stream",
+                                "application/zip"
+                            ))
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                        }
+                        pendingExcelPickerResult = result
+                        try {
+                            startActivityForResult(intent, excelPickerRequestCode)
+                        } catch (e: Exception) {
+                            pendingExcelPickerResult = null
+                            result.error("PICKER_FAILED", e.message ?: "تعذر فتح منتقي الملفات.", null)
+                        }
+                        return@setMethodCallHandler
+                    }
+                    "readExcelDocument" -> {
+                        val uriText = call.argument<String>("uri")
+                        if (uriText.isNullOrBlank()) {
+                            result.error("INVALID_URI", "مرجع ملف Excel غير صالح.", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            val bytes = contentResolver.openInputStream(Uri.parse(uriText))?.use { it.readBytes() }
+                                ?: throw IllegalStateException("تعذر فتح الملف للقراءة.")
+                            if (bytes.isEmpty()) throw IllegalStateException("ملف Excel الأصلي فارغ.")
+                            result.success(bytes)
+                        } catch (e: Exception) {
+                            result.error("EXCEL_READ_FAILED", e.message ?: "تعذرت قراءة ملف Excel الأصلي.", null)
+                        }
+                        return@setMethodCallHandler
+                    }
+                    "createStudentPdf" -> Unit
+                    else -> {
+                        result.notImplemented()
+                        return@setMethodCallHandler
+                    }
                 }
 
                 val arguments = call.arguments as? Map<*, *> ?: emptyMap<Any?, Any?>()
@@ -130,6 +182,60 @@ class MainActivity : FlutterActivity() {
             }
     }
 
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != excelPickerRequestCode) return
+
+        val callback = pendingExcelPickerResult
+        pendingExcelPickerResult = null
+        if (callback == null) return
+        if (resultCode != RESULT_OK || data?.data == null) {
+            callback.success(null)
+            return
+        }
+
+        val uri = data.data!!
+        val grantedFlags = data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION
+        if (grantedFlags == 0) {
+            callback.error(
+                "EXCEL_READ_PERMISSION_MISSING",
+                "لم يمنح مزود الملفات صلاحية قراءة الملف المحدد. اختر الملف من مدير ملفات موثوق.",
+                null
+            )
+            return
+        }
+        try {
+            contentResolver.takePersistableUriPermission(uri, grantedFlags)
+        } catch (_: Exception) {
+            // Some providers grant access for the current app session only.
+        }
+
+        var displayName = "workbook.xlsx"
+        var cursor: Cursor? = null
+        try {
+            cursor = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            if (cursor != null && cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) displayName = cursor.getString(index) ?: displayName
+            }
+        } catch (_: Exception) {
+        } finally {
+            cursor?.close()
+        }
+
+        val extension = displayName.substringAfterLast('.', "").lowercase()
+        if (extension != "xlsx" && extension != "xlsm") {
+            callback.error(
+                "UNSUPPORTED_EXCEL_FORMAT",
+                "الصيغة المدعومة هي XLSX أو XLSM.",
+                null
+            )
+            return
+        }
+
+        callback.success(mapOf("uri" to uri.toString(), "name" to displayName))
+    }
 
     // device_info_plus AndroidInfo.id maps to android.os.Build.ID.
     // This reproduces the exact fingerprint used by exam_maker_app.
