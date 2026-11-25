@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'excel_file_access_service.dart';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
@@ -182,7 +183,7 @@ class StudentExcelService {
   static int detectTotalMonths(Sheet sheet) => extractMonthsFromSheet(sheet).length;
 
   static Future<Excel> _loadExcelFile(String filePath) async {
-    final bytes = await File(filePath).readAsBytes();
+    final bytes = await ExcelFileAccessService.readBytes(filePath);
     return Excel.decodeBytes(_fixExcelDimensions(bytes));
   }
 
@@ -331,7 +332,7 @@ class StudentExcelService {
     String? targetGrade,
     String? examTitle,
   }) async {
-    final bytes = await File(filePath).readAsBytes();
+    final bytes = await ExcelFileAccessService.readBytes(filePath);
     return parseExcelBytes(
       bytes,
       expectedSubject: expectedSubject,
